@@ -36,6 +36,7 @@ describe("TimeCapsule", function () {
         timeCapsule.connect(otherAccount).createCapsule(
           recipient.address,
           "Test Capsule",
+          "Test Description",
           futureTimestamp,
           "ipfs://test-uri"
         )
@@ -45,17 +46,20 @@ describe("TimeCapsule", function () {
     it("캡슐이 올바르게 생성되어야 함", async function () {
       const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
       const title = "Test Capsule";
-      const tokenURI = "ipfs://test-uri";
+      const description = "Test Description";
+      const ipfsMetadataCid = "ipfs://test-uri";
 
       await expect(
-        timeCapsule.createCapsule(recipient.address, title, futureTimestamp, tokenURI)
+        timeCapsule.createCapsule(recipient.address, title, description, futureTimestamp, ipfsMetadataCid)
       ).to.emit(timeCapsule, "CapsuleCreated")
-        .withArgs(1, recipient.address, title, futureTimestamp);
+        .withArgs(1, recipient.address, title, futureTimestamp, ipfsMetadataCid);
 
       const capsule = await timeCapsule.timeCapsules(1);
       expect(capsule.recipient).to.equal(recipient.address);
       expect(capsule.title).to.equal(title);
+      expect(capsule.description).to.equal(description);
       expect(capsule.openTimestamp).to.equal(futureTimestamp);
+      expect(capsule.ipfsMetadataCid).to.equal(ipfsMetadataCid);
       expect(capsule.isOpen).to.be.false;
     });
 
@@ -65,6 +69,7 @@ describe("TimeCapsule", function () {
       await timeCapsule.createCapsule(
         recipient.address,
         "Capsule 1",
+        "Description 1",
         futureTimestamp,
         "ipfs://uri1"
       );
@@ -72,6 +77,7 @@ describe("TimeCapsule", function () {
       await timeCapsule.createCapsule(
         otherAccount.address,
         "Capsule 2",
+        "Description 2",
         futureTimestamp,
         "ipfs://uri2"
       );
@@ -81,6 +87,20 @@ describe("TimeCapsule", function () {
       
       expect(capsule1.recipient).to.equal(recipient.address);
       expect(capsule2.recipient).to.equal(otherAccount.address);
+    });
+
+    it("과거 타임스탬프로 캡슐을 생성할 수 없어야 함", async function () {
+      const pastTimestamp = Math.floor(Date.now() / 1000) - 3600; // 1시간 전
+      
+      await expect(
+        timeCapsule.createCapsule(
+          recipient.address,
+          "Test Capsule",
+          "Test Description",
+          pastTimestamp,
+          "ipfs://test-uri"
+        )
+      ).to.be.revertedWith("TimeCapsule: Open timestamp must be in the future.");
     });
   });
 
@@ -96,6 +116,7 @@ describe("TimeCapsule", function () {
       await timeCapsule.createCapsule(
         recipient.address,
         "Test Capsule",
+        "Test Description",
         openTimestamp,
         "ipfs://test-uri"
       );
@@ -153,13 +174,14 @@ describe("TimeCapsule", function () {
     it("캡슐이 열린 후 올바른 토큰 URI를 반환해야 함", async function () {
       const currentBlock = await ethers.provider.getBlock("latest");
       const futureTimestamp = currentBlock.timestamp + 3600;
-      const tokenURI = "ipfs://test-uri";
+      const ipfsMetadataCid = "ipfs://test-uri";
 
       await timeCapsule.createCapsule(
         recipient.address,
         "Test Capsule",
+        "Test Description",
         futureTimestamp,
-        tokenURI
+        ipfsMetadataCid
       );
 
       // 시간을 미래로 설정하고 캡슐 열기
@@ -167,44 +189,25 @@ describe("TimeCapsule", function () {
       await ethers.provider.send("evm_mine");
       await timeCapsule.openCapsule(1);
 
-      expect(await timeCapsule.tokenURI(1)).to.equal(tokenURI);
+      expect(await timeCapsule.tokenURI(1)).to.equal(ipfsMetadataCid);
     });
 
-    it("owner만 토큰 URI를 변경할 수 있어야 함", async function () {
-      const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
-      
-      await timeCapsule.createCapsule(
-        recipient.address,
-        "Test Capsule",
-        futureTimestamp,
-        "ipfs://original-uri"
-      );
-
-      await expect(
-        timeCapsule.connect(otherAccount).setTokenURI(1, "ipfs://new-uri")
-      ).to.be.revertedWithCustomError(timeCapsule, "OwnableUnauthorizedAccount");
-    });
-
-    it("owner가 토큰 URI를 변경할 수 있어야 함", async function () {
+    it("열리지 않은 캡슐의 토큰 URI는 존재하지 않는 토큰 오류를 발생시켜야 함", async function () {
       const currentBlock = await ethers.provider.getBlock("latest");
       const futureTimestamp = currentBlock.timestamp + 3600;
       
       await timeCapsule.createCapsule(
         recipient.address,
         "Test Capsule",
+        "Test Description",
         futureTimestamp,
-        "ipfs://original-uri"
+        "ipfs://test-uri"
       );
 
-      const newURI = "ipfs://new-uri";
-      await timeCapsule.setTokenURI(1, newURI);
-
-      // 시간을 미래로 설정하고 캡슐 열기
-      await ethers.provider.send("evm_setNextBlockTimestamp", [futureTimestamp + 10]);
-      await ethers.provider.send("evm_mine");
-      await timeCapsule.openCapsule(1);
-
-      expect(await timeCapsule.tokenURI(1)).to.equal(newURI);
+      // 열리지 않은 캡슐의 토큰 URI는 존재하지 않는 토큰 오류를 발생시켜야 함
+      await expect(
+        timeCapsule.tokenURI(1)
+      ).to.be.revertedWithCustomError(timeCapsule, "ERC721NonexistentToken");
     });
   });
 
