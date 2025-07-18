@@ -8,112 +8,155 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
     uint256 private _tokenIdCounter;
 
-    struct Capsule {
-        address recipient;
+    // 타임캡슐의 상세 정보를 담는 구조체 (여기서는 하나의 논리적 캡슐 정보)
+    struct CapsuleContent { // Capsule을 CapsuleContent로 변경하여 명확히 함
+        address creator;
         string title;
-        string description; // 설명 추가
+        string description;
         uint256 openTimestamp;
-        string ipfsMetadataCid; // NFT 메타데이터 JSON의 IPFS CID
-        bool isOpen;
-        // string[] private ipfsCids; // 개별 콘텐츠 IPFS CID 배열 (필요시 주석 해제하여 사용)
+        string unopenedIpfsMetadataCid;
+        string openedIpfsMetadataCid;
     }
 
-    mapping(uint256 => Capsule) public timeCapsules;
+    // 각 tokenId에 연결된 특정 캡슐의 상태 및 메타데이터 CID는 tokenURI를 통해 관리됨
+    // 그리고 각 tokenId가 어떤 캡슐 콘텐츠를 참조하는지 매핑
+    mapping(uint256 => uint256) public tokenIdToCapsuleContentId; // tokenId -> CapsuleContent ID
+    mapping(uint256 => CapsuleContent) public capsuleContents; // CapsuleContent ID -> CapsuleContent
+    mapping(uint256 => bool) public isCapsuleOpenedForToken; // 각 토큰 ID별 개봉 여부
 
+    uint256 private _capsuleContentIdCounter; // 캡슐 콘텐츠 ID 관리를 위한 카운터
+
+    // 캡슐 생성 시 발생하는 이벤트
     event CapsuleCreated(
-        uint256 indexed tokenId,
-        address indexed recipient,
+        uint256 indexed firstTokenId, // 생성된 첫 번째 토큰 ID
+        uint256 indexed capsuleContentId, // 캡슐 콘텐츠 ID
+        address indexed creator,
+        address[] recipients, // 여러 수신자 주소
         string title,
         uint256 openTimestamp,
-        string ipfsMetadataCid
+        string unopenedIpfsMetadataCid
     );
 
+    // 캡슐 개봉 시 발생하는 이벤트
     event CapsuleOpened(
         uint256 indexed tokenId,
-        address indexed recipient
+        uint256 indexed capsuleContentId, // 개봉된 캡슐 콘텐츠 ID
+        address indexed opener,
+        address currentOwner
     );
 
     constructor(address initialOwner) ERC721("TimeCapsule", "TCAP") Ownable(initialOwner) {}
 
     /**
-     * @dev 새로운 타임캡슐을 생성하고 정보를 블록체인에 기록합니다.
-     * @param _recipient 타임캡슐이 열렸을 때 NFT를 받을 지갑 주소.
+     * @dev 새로운 타임캡슐을 생성하고 "열릴 권리" NFT들을 발행합니다.
+     * 지정된 _recipients 배열의 각 주소에게 고유한 tokenId를 가진 NFT가 민팅됩니다.
+     * 이 NFT들은 하나의 논리적인 타임캡슐 콘텐츠를 공유합니다.
+     *
+     * @param _recipients 타임캡슐 NFT를 받을 주소들의 배열.
      * @param _title 타임캡슐의 제목.
-     * @param _description 타임캡슐의 설명 (선택 사항).
+     * @param _description 타임캡슐의 설명.
      * @param _openTimestamp 타임캡슐을 열 수 있는 Unix 타임스탬프.
-     * @param _ipfsMetadataCid 타임캡슐 NFT 메타데이터 JSON 파일의 IPFS CID (e.g., "Qm...").
-     * @return newItemId 생성된 타임캡슐의 고유 ID (tokenId).
+     * @param _unopenedIpfsMetadataCid 열리지 않은 상태의 NFT 메타데이터 JSON 파일의 IPFS CID.
+     * @param _openedIpfsMetadataCid 열린 상태의 NFT 메타데이터 JSON 파일의 IPFS CID.
+     * @return firstTokenId 생성된 첫 번째 타임캡슐의 고유 ID (tokenId).
      */
     function createCapsule(
-        address _recipient,
+        address[] memory _recipients, // 여러 수신자를 받기 위한 배열
         string memory _title,
-        string memory _description, // 설명 인자 추가
+        string memory _description,
         uint256 _openTimestamp,
-        string memory _ipfsMetadataCid
+        string memory _unopenedIpfsMetadataCid,
+        string memory _openedIpfsMetadataCid
     ) public onlyOwner returns (uint256) {
-        require(_openTimestamp > block.timestamp, "TimeCapsule: Open timestamp must be in the future.");
+        require(bytes(_unopenedIpfsMetadataCid).length > 0, "TimeCapsule: Unopened metadata CID cannot be empty.");
+        require(bytes(_openedIpfsMetadataCid).length > 0, "TimeCapsule: Opened metadata CID cannot be empty.");
+        require(_recipients.length > 0, "TimeCapsule: Recipients array cannot be empty.");
 
-        _tokenIdCounter++;
-        uint256 newItemId = _tokenIdCounter;
+        _capsuleContentIdCounter++;
+        uint256 currentCapsuleContentId = _capsuleContentIdCounter;
 
-        timeCapsules[newItemId] = Capsule({
-            recipient: _recipient,
+        // 타임캡슐 콘텐츠 정보 저장 (모든 NFT가 공유할 정보)
+        capsuleContents[currentCapsuleContentId] = CapsuleContent({
+            creator: msg.sender,
             title: _title,
             description: _description,
             openTimestamp: _openTimestamp,
-            ipfsMetadataCid: _ipfsMetadataCid,
-            isOpen: false
+            unopenedIpfsMetadataCid: _unopenedIpfsMetadataCid,
+            openedIpfsMetadataCid: _openedIpfsMetadataCid
         });
 
-        emit CapsuleCreated(newItemId, _recipient, _title, _openTimestamp, _ipfsMetadataCid);
-        return newItemId;
+        uint256 firstTokenId = 0; // 첫 번째 생성된 토큰 ID를 저장하기 위함
+
+        // 각 수신자에게 NFT 민팅
+        for (uint256 i = 0; i < _recipients.length; i++) {
+            _tokenIdCounter++;
+            uint256 newItemId = _tokenIdCounter;
+
+            if (i == 0) {
+                firstTokenId = newItemId; // 첫 번째 토큰 ID 기록
+            }
+
+            // 이 토큰 ID가 어떤 캡슐 콘텐츠를 참조하는지 매핑
+            tokenIdToCapsuleContentId[newItemId] = currentCapsuleContentId;
+            isCapsuleOpenedForToken[newItemId] = false; // 각 토큰은 처음엔 닫힌 상태
+
+            // NFT를 수신자에게 민팅
+            _safeMint(_recipients[i], newItemId);
+            // 이 NFT의 메타데이터 URI를 "열리지 않은" 상태의 CID로 설정
+            _setTokenURI(newItemId, _unopenedIpfsMetadataCid);
+        }
+
+        // CapsuleCreated 이벤트 발생
+        emit CapsuleCreated(firstTokenId, currentCapsuleContentId, msg.sender, _recipients, _title, _openTimestamp, _unopenedIpfsMetadataCid);
+        return firstTokenId;
     }
 
     /**
-     * @dev 타임캡슐을 열고 NFT를 발행하여 수신자에게 전송합니다.
-     * 이 함수는 openTimestamp가 도달했을 때 백엔드 스케줄링 서비스(또는 Chainlink Keeper)에 의해 호출될 것으로 예상됩니다.
-     * @param _tokenId 열고자 하는 타임캡슐의 ID.
+     * @dev 타임캡슐을 열고 NFT의 메타데이터를 "열린 콘텐츠"로 변경합니다.
+     * 이 함수는 NFT의 현재 소유자 또는 해당 NFT에 대해 승인된 주소에 의해 호출될 수 있습니다.
+     *
+     * @param _tokenId 열고자 하는 타임캡슐 NFT의 ID.
      */
     function openCapsule(uint256 _tokenId) public {
-        Capsule storage capsule = timeCapsules[_tokenId];
+        uint256 contentId = tokenIdToCapsuleContentId[_tokenId];
+        CapsuleContent storage content = capsuleContents[contentId];
 
-        require(!capsule.isOpen, "TimeCapsule: Already opened.");
-        require(block.timestamp >= capsule.openTimestamp, "TimeCapsule: It's not time yet.");
-        require(bytes(capsule.ipfsMetadataCid).length > 0, "TimeCapsule: Metadata CID not set for this capsule.");
+        // 해당 토큰이 이미 열렸는지 확인
+        require(!isCapsuleOpenedForToken[_tokenId], "TimeCapsule: This token is already opened.");
+        // 개봉 시점이 되었는지 확인
+        require(block.timestamp >= content.openTimestamp, "TimeCapsule: It's not time yet.");
 
+        // 호출자가 현재 _tokenId NFT의 소유자이거나 승인된 주소이거나 컨트랙트 오너인지 확인
+        address currentNFTOwner = ownerOf(_tokenId);
+        require(
+            currentNFTOwner == msg.sender || 
+            getApproved(_tokenId) == msg.sender || 
+            owner() == msg.sender, 
+            "TimeCapsule: Caller is not owner, approved, nor contract owner."
+        );
 
-        // NFT 발행 (mint) 및 NFT 메타데이터 URI 설정
-        // ERC721URIStorage의 tokenURI는 IPFS 게이트웨이 주소를 포함해야 합니다.
-        // 예를 들어 "ipfs://QmW1_imageCID..." 형태여야 합니다.
-        // createCapsule에서 받은 _ipfsMetadataCid가 이미 "ipfs://..." 형태라고 가정합니다.
-        _setTokenURI(_tokenId, capsule.ipfsMetadataCid); // NFT 메타데이터 연결
-        _safeMint(capsule.recipient, _tokenId); // NFT를 수신자에게 발행
+        // --- 핵심 로직: NFT 메타데이터 변경 ---
+        // 1. 해당 토큰의 상태를 "열림"으로 업데이트
+        isCapsuleOpenedForToken[_tokenId] = true;
 
-        capsule.isOpen = true; // 캡슐 상태 업데이트
+        // 2. NFT의 메타데이터 URI를 "열린" 상태의 CID로 업데이트
+        _setTokenURI(_tokenId, content.openedIpfsMetadataCid);
 
-        emit CapsuleOpened(_tokenId, capsule.recipient);
+        // CapsuleOpened 이벤트 발생
+        emit CapsuleOpened(_tokenId, contentId, msg.sender, currentNFTOwner);
     }
 
-    // --- 문제 해결을 위해 추가하거나 수정한 부분 ---
+    // --- OpenZeppelin ERC721 표준 오버라이드 함수들 (동일) ---
 
-    /**
-     * @dev ERC721과 ERC721URIStorage 모두 tokenURI를 정의하므로, 명시적으로 오버라이드합니다.
-     * ERC721URIStorage의 구현을 사용합니다.
-     */
     function tokenURI(uint256 tokenId)
         public
         view
         override(ERC721, ERC721URIStorage)
         returns (string memory)
     {
-        // openCapsule 함수에서 _setTokenURI가 호출되어야 유효한 URI를 반환합니다.
-        // 열리지 않은 캡슐에 대해 tokenURI를 호출하면 비어있는 문자열이 반환될 수 있습니다.
         return super.tokenURI(tokenId);
     }
 
-    /**
-     * @dev ERC721URIStorage의 필수 오버라이드 함수입니다.
-     */
     function supportsInterface(bytes4 interfaceId)
         public
         view
@@ -123,10 +166,6 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
         return super.supportsInterface(interfaceId);
     }
 
-    /**
-     * @dev 컨트랙트의 _baseURI 기능을 비활성화하기 위해 오버라이드합니다.
-     * 우리는 ERC721URIStorage의 tokenURI를 직접 사용합니다.
-     */
     function _baseURI() internal pure override returns (string memory) {
         return "";
     }
