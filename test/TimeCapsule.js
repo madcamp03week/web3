@@ -174,6 +174,27 @@ describe("TimeCapsule", function () {
         )
       ).to.be.revertedWith("TimeCapsule: Recipients array cannot be empty.");
     });
+
+    it("과거 타임스탬프로 캡슐을 생성할 수 있어야 함", async function () {
+      const currentBlock = await ethers.provider.getBlock("latest");
+      const pastTimestamp = currentBlock.timestamp - 3600; // 1시간 전
+      
+      await expect(
+        timeCapsule.createCapsule(
+          [recipient1.address],
+          "Past Capsule",
+          "Test Description",
+          pastTimestamp,
+          "ipfs://test-unopened-uri",
+          "ipfs://test-opened-uri"
+        )
+      ).to.emit(timeCapsule, "CapsuleCreated");
+
+      // 과거 타임스탬프로 생성된 캡슐도 즉시 열 수 있어야 함
+      await expect(
+        timeCapsule.connect(recipient1).openCapsule(1)
+      ).to.emit(timeCapsule, "CapsuleOpened");
+    });
   });
 
   describe("캡슐 열기", function () {
