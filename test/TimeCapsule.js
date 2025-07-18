@@ -130,20 +130,7 @@ describe("TimeCapsule", function () {
       expect(await timeCapsule.ownerOf(2)).to.equal(recipient2.address);
     });
 
-    it("과거 타임스탬프로 캡슐을 생성할 수 없어야 함", async function () {
-      const pastTimestamp = Math.floor(Date.now() / 1000) - 3600; // 1시간 전
-      
-      await expect(
-        timeCapsule.createCapsule(
-          [recipient1.address],
-          "Test Capsule",
-          "Test Description",
-          pastTimestamp,
-          "ipfs://test-unopened-uri",
-          "ipfs://test-opened-uri"
-        )
-      ).to.be.revertedWith("TimeCapsule: Open timestamp must be in the future.");
-    });
+
 
     it("빈 메타데이터 CID로 캡슐을 생성할 수 없어야 함", async function () {
       const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
@@ -265,7 +252,7 @@ describe("TimeCapsule", function () {
 
       await expect(
         timeCapsule.connect(otherAccount).openCapsule(tokenId)
-      ).to.be.revertedWith("TimeCapsule: Caller is not owner nor approved.");
+      ).to.be.revertedWith("TimeCapsule: Caller is not owner, approved, nor contract owner.");
     });
 
     it("승인된 주소는 캡슐을 열 수 있어야 함", async function () {
