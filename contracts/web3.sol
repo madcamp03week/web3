@@ -16,6 +16,9 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
         uint256 openTimestamp;
         string unopenedIpfsMetadataCid;
         string openedIpfsMetadataCid;
+        bool isTransferable; // transfer 가능 여부
+        bool isSmartContractTransferable; // smartcontract를 통한 transfer 가능 여부
+        bool isSmartContractOpenable; // smartcontract를 통한 open 가능 여부
     }
 
     // 각 tokenId에 연결된 특정 캡슐의 상태 및 메타데이터 CID는 tokenURI를 통해 관리됨
@@ -58,6 +61,9 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
      * @param _openTimestamp 타임캡슐을 열 수 있는 Unix 타임스탬프.
      * @param _unopenedIpfsMetadataCid 열리지 않은 상태의 NFT 메타데이터 JSON 파일의 IPFS CID.
      * @param _openedIpfsMetadataCid 열린 상태의 NFT 메타데이터 JSON 파일의 IPFS CID.
+     * @param _isTransferable transfer 가능 여부.
+     * @param _isSmartContractTransferable smartcontract를 통한 transfer 가능 여부.
+     * @param _isSmartContractOpenable smartcontract를 통한 open 가능 여부.
      * @return firstTokenId 생성된 첫 번째 타임캡슐의 고유 ID (tokenId).
      */
     function createCapsule(
@@ -66,7 +72,10 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
         string memory _description,
         uint256 _openTimestamp,
         string memory _unopenedIpfsMetadataCid,
-        string memory _openedIpfsMetadataCid
+        string memory _openedIpfsMetadataCid,
+        bool _isTransferable,
+        bool _isSmartContractTransferable,
+        bool _isSmartContractOpenable
     ) public onlyOwner returns (uint256) {
         require(bytes(_unopenedIpfsMetadataCid).length > 0, "TimeCapsule: Unopened metadata CID cannot be empty.");
         require(bytes(_openedIpfsMetadataCid).length > 0, "TimeCapsule: Opened metadata CID cannot be empty.");
@@ -82,7 +91,10 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
             description: _description,
             openTimestamp: _openTimestamp,
             unopenedIpfsMetadataCid: _unopenedIpfsMetadataCid,
-            openedIpfsMetadataCid: _openedIpfsMetadataCid
+            openedIpfsMetadataCid: _openedIpfsMetadataCid,
+            isTransferable: _isTransferable,
+            isSmartContractTransferable: _isSmartContractTransferable,
+            isSmartContractOpenable: _isSmartContractOpenable
         });
 
         uint256 firstTokenId = 0; // 첫 번째 생성된 토큰 ID를 저장하기 위함
@@ -126,13 +138,20 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
         // 개봉 시점이 되었는지 확인
         require(block.timestamp >= content.openTimestamp, "TimeCapsule: It's not time yet.");
 
-        // 호출자가 현재 _tokenId NFT의 소유자이거나 승인된 주소이거나 컨트랙트 오너인지 확인
+        // 호출자가 현재 _tokenId NFT의 소유자이거나 승인된 주소인지 확인
         address currentNFTOwner = ownerOf(_tokenId);
+        bool isOwner = currentNFTOwner == msg.sender;
+        bool isApproved = getApproved(_tokenId) == msg.sender;
+        bool isContractOwner = owner() == msg.sender;
+        
+        // 컨트랙트 오너가 개봉하려는 경우, isSmartContractOpenable이 true여야 함
+        if (isContractOwner && !content.isSmartContractOpenable) {
+            revert("TimeCapsule: Contract owner cannot open this capsule.");
+        }
+        
         require(
-            currentNFTOwner == msg.sender || 
-            getApproved(_tokenId) == msg.sender || 
-            owner() == msg.sender, 
-            "TimeCapsule: Caller is not owner, approved, nor contract owner."
+            isOwner || isApproved || (isContractOwner && content.isSmartContractOpenable), 
+            "TimeCapsule: Caller is not owner, approved, nor authorized contract owner."
         );
 
         // --- 핵심 로직: NFT 메타데이터 변경 ---
@@ -168,5 +187,34 @@ contract TimeCapsule is ERC721, ERC721URIStorage, Ownable {
 
     function _baseURI() internal pure override returns (string memory) {
         return "";
+    }
+
+    /**
+     * @dev 토큰 전송 전에 호출되는 함수로, transfer 제한을 확인합니다.
+     */
+    function _update(
+        address to,
+        uint256 tokenId,
+        address auth
+    ) internal virtual override(ERC721) returns (address) {
+        address from = _ownerOf(tokenId);
+        
+        // from이 address(0)이 아닌 경우에만 transfer 제한 확인 (민팅 시에는 제한 없음)
+        if (from != address(0)) {
+            uint256 contentId = tokenIdToCapsuleContentId[tokenId];
+            CapsuleContent storage content = capsuleContents[contentId];
+            
+            // transfer가 불가능한 경우
+            if (!content.isTransferable) {
+                revert("TimeCapsule: Transfer is not allowed for this capsule.");
+            }
+            
+            // 스마트 컨트랙트를 통한 transfer가 불가능한 경우
+            if (!content.isSmartContractTransferable && to.code.length > 0) {
+                revert("TimeCapsule: Smart contract transfer is not allowed for this capsule.");
+            }
+        }
+        
+        return super._update(to, tokenId, auth);
     }
 }
