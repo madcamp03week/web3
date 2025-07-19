@@ -40,7 +40,10 @@ describe("TimeCapsule", function () {
           "Test Description",
           futureTimestamp,
           "ipfs://test-unopened-uri",
-          "ipfs://test-opened-uri"
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
         )
       ).to.be.revertedWithCustomError(timeCapsule, "OwnableUnauthorizedAccount");
     });
@@ -54,7 +57,17 @@ describe("TimeCapsule", function () {
       const recipients = [recipient1.address];
 
       await expect(
-        timeCapsule.createCapsule(recipients, title, description, futureTimestamp, unopenedIpfsMetadataCid, openedIpfsMetadataCid)
+        timeCapsule.createCapsule(
+          recipients, 
+          title, 
+          description, 
+          futureTimestamp, 
+          unopenedIpfsMetadataCid, 
+          openedIpfsMetadataCid,
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
+        )
       ).to.emit(timeCapsule, "CapsuleCreated")
         .withArgs(1, 1, owner.address, recipients, title, futureTimestamp, unopenedIpfsMetadataCid);
 
@@ -66,6 +79,9 @@ describe("TimeCapsule", function () {
       expect(capsuleContent.openTimestamp).to.equal(futureTimestamp);
       expect(capsuleContent.unopenedIpfsMetadataCid).to.equal(unopenedIpfsMetadataCid);
       expect(capsuleContent.openedIpfsMetadataCid).to.equal(openedIpfsMetadataCid);
+      expect(capsuleContent.isTransferable).to.be.true;
+      expect(capsuleContent.isSmartContractTransferable).to.be.true;
+      expect(capsuleContent.isSmartContractOpenable).to.be.true;
 
       // 토큰 매핑 확인
       expect(await timeCapsule.tokenIdToCapsuleContentId(1)).to.equal(1);
@@ -85,7 +101,17 @@ describe("TimeCapsule", function () {
       const recipients = [recipient1.address, recipient2.address];
 
       await expect(
-        timeCapsule.createCapsule(recipients, title, description, futureTimestamp, unopenedIpfsMetadataCid, openedIpfsMetadataCid)
+        timeCapsule.createCapsule(
+          recipients, 
+          title, 
+          description, 
+          futureTimestamp, 
+          unopenedIpfsMetadataCid, 
+          openedIpfsMetadataCid,
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
+        )
       ).to.emit(timeCapsule, "CapsuleCreated")
         .withArgs(1, 1, owner.address, recipients, title, futureTimestamp, unopenedIpfsMetadataCid);
 
@@ -109,7 +135,10 @@ describe("TimeCapsule", function () {
         "Description 1",
         futureTimestamp,
         "ipfs://uri1-unopened",
-        "ipfs://uri1-opened"
+        "ipfs://uri1-opened",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       await timeCapsule.createCapsule(
@@ -118,7 +147,10 @@ describe("TimeCapsule", function () {
         "Description 2",
         futureTimestamp,
         "ipfs://uri2-unopened",
-        "ipfs://uri2-opened"
+        "ipfs://uri2-opened",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       const capsuleContent1 = await timeCapsule.capsuleContents(1);
@@ -129,8 +161,6 @@ describe("TimeCapsule", function () {
       expect(await timeCapsule.ownerOf(1)).to.equal(recipient1.address);
       expect(await timeCapsule.ownerOf(2)).to.equal(recipient2.address);
     });
-
-
 
     it("빈 메타데이터 CID로 캡슐을 생성할 수 없어야 함", async function () {
       const futureTimestamp = Math.floor(Date.now() / 1000) + 3600;
@@ -143,7 +173,10 @@ describe("TimeCapsule", function () {
           "Test Description",
           futureTimestamp,
           "",
-          "ipfs://test-opened-uri"
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
         )
       ).to.be.revertedWith("TimeCapsule: Unopened metadata CID cannot be empty.");
 
@@ -155,7 +188,10 @@ describe("TimeCapsule", function () {
           "Test Description",
           futureTimestamp,
           "ipfs://test-unopened-uri",
-          ""
+          "",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
         )
       ).to.be.revertedWith("TimeCapsule: Opened metadata CID cannot be empty.");
     });
@@ -170,7 +206,10 @@ describe("TimeCapsule", function () {
           "Test Description",
           futureTimestamp,
           "ipfs://test-unopened-uri",
-          "ipfs://test-opened-uri"
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
         )
       ).to.be.revertedWith("TimeCapsule: Recipients array cannot be empty.");
     });
@@ -186,7 +225,10 @@ describe("TimeCapsule", function () {
           "Test Description",
           pastTimestamp,
           "ipfs://test-unopened-uri",
-          "ipfs://test-opened-uri"
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
         )
       ).to.emit(timeCapsule, "CapsuleCreated");
 
@@ -212,7 +254,10 @@ describe("TimeCapsule", function () {
         "Test Description",
         openTimestamp,
         "ipfs://test-unopened-uri",
-        "ipfs://test-opened-uri"
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
       
       tokenId = 1;
@@ -273,7 +318,7 @@ describe("TimeCapsule", function () {
 
       await expect(
         timeCapsule.connect(otherAccount).openCapsule(tokenId)
-      ).to.be.revertedWith("TimeCapsule: Caller is not owner, approved, nor contract owner.");
+      ).to.be.revertedWith("TimeCapsule: Caller is not owner, approved, nor authorized contract owner.");
     });
 
     it("승인된 주소는 캡슐을 열 수 있어야 함", async function () {
@@ -306,6 +351,33 @@ describe("TimeCapsule", function () {
       expect(await timeCapsule.isCapsuleOpenedForToken(tokenId)).to.be.true;
     });
 
+    it("isSmartContractOpenable이 false인 경우 컨트랙트 오너가 열 수 없어야 함", async function () {
+      // isSmartContractOpenable이 false인 캡슐 생성
+      const currentBlock = await ethers.provider.getBlock("latest");
+      const futureTimestamp = currentBlock.timestamp + 3600;
+      
+      await timeCapsule.createCapsule(
+        [recipient2.address],
+        "Restricted Capsule",
+        "Test Description",
+        futureTimestamp,
+        "ipfs://test-unopened-uri",
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        false // isSmartContractOpenable
+      );
+
+      // 시간을 미래로 설정
+      await ethers.provider.send("evm_setNextBlockTimestamp", [futureTimestamp + 10]);
+      await ethers.provider.send("evm_mine");
+
+      // 컨트랙트 오너가 캡슐 열기 시도
+      await expect(
+        timeCapsule.openCapsule(2) // 토큰 ID 2
+      ).to.be.revertedWith("TimeCapsule: Contract owner cannot open this capsule.");
+    });
+
     it("여러 수신자가 있는 캡슐에서 각각 독립적으로 열 수 있어야 함", async function () {
       // 여러 수신자로 캡슐 생성
       const currentBlock = await ethers.provider.getBlock("latest");
@@ -317,7 +389,10 @@ describe("TimeCapsule", function () {
         "Test Description",
         multiOpenTimestamp,
         "ipfs://test-unopened-uri",
-        "ipfs://test-opened-uri"
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       // 시간을 미래로 설정
@@ -340,6 +415,147 @@ describe("TimeCapsule", function () {
     });
   });
 
+  describe("관리자 전용 NFT 전송 함수들", function () {
+    let tokenId1, tokenId2;
+
+    beforeEach(async function () {
+      // 두 개의 캡슐 생성 (하나는 isSmartContractTransferable이 true, 하나는 false)
+      const currentBlock = await ethers.provider.getBlock("latest");
+      const futureTimestamp = currentBlock.timestamp + 3600;
+      
+      // 첫 번째 캡슐: isSmartContractTransferable = true
+      await timeCapsule.createCapsule(
+        [recipient1.address],
+        "Transferable Capsule",
+        "Test Description",
+        futureTimestamp,
+        "ipfs://test-unopened-uri",
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
+      );
+      
+      // 두 번째 캡슐: isSmartContractTransferable = false
+      await timeCapsule.createCapsule(
+        [recipient2.address],
+        "Non-Transferable Capsule",
+        "Test Description",
+        futureTimestamp,
+        "ipfs://test-unopened-uri",
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        false, // isSmartContractTransferable
+        true  // isSmartContractOpenable
+      );
+      
+      tokenId1 = 1; // 첫 번째 캡슐의 토큰
+      tokenId2 = 2; // 두 번째 캡슐의 토큰
+    });
+
+    describe("forceTransferToken", function () {
+      it("owner만 forceTransferToken을 호출할 수 있어야 함", async function () {
+        await expect(
+          timeCapsule.connect(otherAccount).forceTransferToken(tokenId1, otherAccount.address)
+        ).to.be.revertedWithCustomError(timeCapsule, "OwnableUnauthorizedAccount");
+      });
+
+      it("isSmartContractTransferable이 true인 토큰은 강제 전송이 가능해야 함", async function () {
+        await expect(
+          timeCapsule.forceTransferToken(tokenId1, otherAccount.address)
+        ).to.emit(timeCapsule, "Transfer")
+          .withArgs(recipient1.address, otherAccount.address, tokenId1);
+
+        expect(await timeCapsule.ownerOf(tokenId1)).to.equal(otherAccount.address);
+      });
+
+      it("isSmartContractTransferable이 false인 토큰은 강제 전송이 불가능해야 함", async function () {
+        await expect(
+          timeCapsule.forceTransferToken(tokenId2, otherAccount.address)
+        ).to.be.revertedWith("TimeCapsule: Smart contract transfer is not allowed for this capsule.");
+      });
+
+      it("존재하지 않는 토큰에 대해 강제 전송을 시도하면 오류가 발생해야 함", async function () {
+        await expect(
+          timeCapsule.forceTransferToken(999, otherAccount.address)
+        ).to.be.revertedWith("TimeCapsule: Token does not exist");
+      });
+
+      it("같은 주소로 강제 전송을 시도하면 오류가 발생해야 함", async function () {
+        await expect(
+          timeCapsule.forceTransferToken(tokenId1, recipient1.address)
+        ).to.be.revertedWith("TimeCapsule: New owner is same as current owner");
+      });
+    });
+
+
+
+    describe("transferAllTokensOfCapsule", function () {
+      it("특정 캡슐의 모든 토큰을 전송할 수 있어야 함", async function () {
+        // 여러 수신자로 캡슐 생성
+        const currentBlock = await ethers.provider.getBlock("latest");
+        const futureTimestamp = currentBlock.timestamp + 3600;
+        
+        await timeCapsule.createCapsule(
+          [recipient1.address, recipient2.address, otherAccount.address],
+          "Multi Capsule",
+          "Test Description",
+          futureTimestamp,
+          "ipfs://test-unopened-uri",
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
+        );
+
+        const newOwners = [otherAccount.address, recipient1.address, recipient2.address];
+
+        await expect(
+          timeCapsule.transferAllTokensOfCapsule(3, newOwners) // 캡슐 콘텐츠 ID 3
+        ).to.emit(timeCapsule, "Transfer")
+          .withArgs(recipient1.address, otherAccount.address, 3)
+          .and.to.emit(timeCapsule, "Transfer")
+          .withArgs(recipient2.address, recipient1.address, 4)
+          .and.to.emit(timeCapsule, "Transfer")
+          .withArgs(otherAccount.address, recipient2.address, 5);
+
+        expect(await timeCapsule.ownerOf(3)).to.equal(otherAccount.address);
+        expect(await timeCapsule.ownerOf(4)).to.equal(recipient1.address);
+        expect(await timeCapsule.ownerOf(5)).to.equal(recipient2.address);
+      });
+    });
+
+    describe("transferAllTokensFromOwner", function () {
+      it("특정 소유자의 모든 토큰을 전송할 수 있어야 함", async function () {
+        // recipient1에게 여러 토큰 생성
+        const currentBlock = await ethers.provider.getBlock("latest");
+        const futureTimestamp = currentBlock.timestamp + 3600;
+        
+        await timeCapsule.createCapsule(
+          [recipient1.address],
+          "Second Capsule for Recipient1",
+          "Test Description",
+          futureTimestamp,
+          "ipfs://test-unopened-uri",
+          "ipfs://test-opened-uri",
+          true, // isTransferable
+          true, // isSmartContractTransferable
+          true  // isSmartContractOpenable
+        );
+
+        await expect(
+          timeCapsule.transferAllTokensFromOwner(recipient1.address, otherAccount.address)
+        ).to.emit(timeCapsule, "Transfer")
+          .withArgs(recipient1.address, otherAccount.address, tokenId1)
+          .and.to.emit(timeCapsule, "Transfer")
+          .withArgs(recipient1.address, otherAccount.address, 3);
+
+        expect(await timeCapsule.ownerOf(tokenId1)).to.equal(otherAccount.address);
+        expect(await timeCapsule.ownerOf(3)).to.equal(otherAccount.address);
+      });
+    });
+  });
+
   describe("토큰 URI", function () {
     it("캡슐이 열린 후 올바른 토큰 URI를 반환해야 함", async function () {
       const currentBlock = await ethers.provider.getBlock("latest");
@@ -353,7 +569,10 @@ describe("TimeCapsule", function () {
         "Test Description",
         futureTimestamp,
         unopenedIpfsMetadataCid,
-        openedIpfsMetadataCid
+        openedIpfsMetadataCid,
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       // 열리지 않은 상태의 토큰 URI 확인
@@ -400,7 +619,10 @@ describe("TimeCapsule", function () {
         "Test Description",
         futureTimestamp,
         "ipfs://test-unopened-uri",
-        "ipfs://test-opened-uri"
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       // NFT 소유자가 다른 주소로 전송
@@ -409,6 +631,28 @@ describe("TimeCapsule", function () {
       expect(await timeCapsule.ownerOf(1)).to.equal(otherAccount.address);
       expect(await timeCapsule.balanceOf(recipient1.address)).to.equal(0);
       expect(await timeCapsule.balanceOf(otherAccount.address)).to.equal(1);
+    });
+
+    it("isTransferable이 false인 경우 전송이 불가능해야 함", async function () {
+      const currentBlock = await ethers.provider.getBlock("latest");
+      const futureTimestamp = currentBlock.timestamp + 3600;
+      
+      await timeCapsule.createCapsule(
+        [recipient1.address],
+        "Non-Transferable Capsule",
+        "Test Description",
+        futureTimestamp,
+        "ipfs://test-unopened-uri",
+        "ipfs://test-opened-uri",
+        false, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
+      );
+
+      // NFT 전송 시도
+      await expect(
+        timeCapsule.connect(recipient1).transferFrom(recipient1.address, otherAccount.address, 1)
+      ).to.be.revertedWith("TimeCapsule: Transfer is not allowed for this capsule.");
     });
 
     it("전송된 NFT도 캡슐을 열 수 있어야 함", async function () {
@@ -421,7 +665,10 @@ describe("TimeCapsule", function () {
         "Test Description",
         futureTimestamp,
         "ipfs://test-unopened-uri",
-        "ipfs://test-opened-uri"
+        "ipfs://test-opened-uri",
+        true, // isTransferable
+        true, // isSmartContractTransferable
+        true  // isSmartContractOpenable
       );
 
       // NFT 전송
