@@ -13,9 +13,13 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
     mapping(uint256 => address) public writerOfPost; // 글 작성자
     uint256 public constant REWARD_TOKEN_PER_LIKE = 1 * 10**18; // 좋아요 1개당 토큰
     ChronosToken public rewardToken; // 보상 토큰
-    uint256 public constant TOKEN_EXCHANGE_THRESHOLD = 10; // 교환 임계값
-    uint256 public polygonAmountPer10Tokens; // 0.1 MATIC
-    uint256 public constant MIN_POLYGON_EXCHANGE = 0.1 * 10**18; // 최소 교환 MATIC량
+    uint256 public tokenExchangeThreshold = 10; // 교환 임계값
+    uint256 public polygonAmountPer10Tokens;
+    
+    // 최소 교환 MATIC량을 polygonAmountPer10Tokens와 동일하게 설정
+    function MIN_POLYGON_EXCHANGE() public view returns (uint256) {
+        return polygonAmountPer10Tokens;
+    }
 
     // --- 이벤트 ---
     event WriterSet(uint256 indexed postId, address indexed writer);
@@ -23,11 +27,12 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
     event TokensExchangedForPolygon(address indexed exchanger, uint256 polygonAmount, uint256 tokenAmount);
     event RewardTokenAddressUpdated(address oldAddress, address newAddress);
     event PolygonExchangeAmountUpdated(uint256 newAmount);
+    event TokenExchangeThresholdUpdated(uint256 newThreshold);
 
     // --- 생성자 ---
     constructor(address _rewardTokenAddress) Ownable(msg.sender) {
         rewardToken = ChronosToken(_rewardTokenAddress);
-        polygonAmountPer10Tokens = 0.1 * 10**18;
+        polygonAmountPer10Tokens = 0.01 * 10**18;
     }
 
     // 글 작성자 등록
@@ -52,9 +57,9 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
         return postLikes[_postId];
     }
 
-    // from의 토큰 10개를 받고 0.1 MATIC 지급
+    // from의 토큰을 받고 MATIC 지급
     function exchangeTokensForPolygon(address from) public nonReentrant {
-        uint256 amountToExchange = TOKEN_EXCHANGE_THRESHOLD * 10**18;
+        uint256 amountToExchange = tokenExchangeThreshold * 10**18;
         require(rewardToken.balanceOf(from) >= amountToExchange, "Insufficient tokens");
         require(address(this).balance >= polygonAmountPer10Tokens, "Insufficient Polygon in contract");
         rewardToken.transferFromAny(from, address(this), amountToExchange);
@@ -63,13 +68,14 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
         emit PolygonExchanged(from, amountToExchange, polygonAmountPer10Tokens);
     }
 
-    // from의 0.1 MATIC을 받고 토큰 10개 지급
+    // from의 MATIC을 받고 토큰 지급
     function exchangePolygonForTokens(address from) public payable nonReentrant {
-        require(msg.value >= MIN_POLYGON_EXCHANGE, "Insufficient Polygon sent");
-        require(msg.value % MIN_POLYGON_EXCHANGE == 0, "Polygon amount must be multiple of 0.1");
+        uint256 minExchange = MIN_POLYGON_EXCHANGE();
+        require(msg.value >= minExchange, "Insufficient Polygon sent");
+        require(msg.value % minExchange == 0, "Polygon amount must be multiple of minimum exchange amount");
         
         uint256 polygonAmount = msg.value;
-        uint256 tokenAmount = (polygonAmount / MIN_POLYGON_EXCHANGE) * TOKEN_EXCHANGE_THRESHOLD * 10**18;
+        uint256 tokenAmount = (polygonAmount / minExchange) * tokenExchangeThreshold * 10**18;
         
         // 토큰 발행 (mint 권한이 필요함)
         require(rewardToken.mint(from, tokenAmount), "Failed to mint tokens");
@@ -96,6 +102,13 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
     function setPolygonExchangeAmount(uint256 _amount) public onlyOwner {
         polygonAmountPer10Tokens = _amount;
         emit PolygonExchangeAmountUpdated(_amount);
+    }
+
+    // 토큰 교환 임계값 변경
+    function setTokenExchangeThreshold(uint256 _threshold) public onlyOwner {
+        require(_threshold > 0, "Token exchange threshold must be greater than 0");
+        tokenExchangeThreshold = _threshold;
+        emit TokenExchangeThresholdUpdated(_threshold);
     }
 
     // ChronosToken에 권한 요청 (owner만 호출 가능)
