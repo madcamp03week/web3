@@ -82,6 +82,21 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
         emit PolygonExchangeAmountUpdated(_amount);
     }
 
+    // ChronosToken에 권한 요청 (owner만 호출 가능)
+    function requestTokenAuthorization() public onlyOwner {
+        rewardToken.authorizeOperator(address(this));
+    }
+
+    // ChronosToken 권한 해제 (owner만 호출 가능)
+    function revokeTokenAuthorization() public onlyOwner {
+        rewardToken.revokeOperator(address(this));
+    }
+
+    // 현재 권한 상태 확인
+    function isTokenAuthorized() public view returns (bool) {
+        return rewardToken.isAuthorizedOperator(address(this));
+    }
+
     // MATIC 수신
     receive() external payable {}
     fallback() external payable {}
