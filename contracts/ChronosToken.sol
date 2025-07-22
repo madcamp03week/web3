@@ -16,8 +16,36 @@ contract ChronosToken is ERC20, Ownable {
         _mint(ownerAddress, 1000000 * 10**decimals());
     }
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    // mint 권한을 가진 주소들
+    mapping(address => bool) public mintAuthorizedOperators;
+    
+    // mint 권한 관련 이벤트
+    event MintOperatorAuthorized(address indexed operator);
+    event MintOperatorRevoked(address indexed operator);
+
+    // mint 권한이 있는 주소도 mint 가능하도록 수정
+    function mint(address to, uint256 amount) public returns (bool) {
+        require(msg.sender == owner() || mintAuthorizedOperators[msg.sender], "Not authorized to mint");
         _mint(to, amount);
+        return true;
+    }
+
+    // mint 권한 부여 함수 (owner만 호출 가능)
+    function authorizeMintOperator(address operator) public onlyOwner {
+        require(operator != address(0), "Mint operator cannot be zero address");
+        mintAuthorizedOperators[operator] = true;
+        emit MintOperatorAuthorized(operator);
+    }
+
+    // mint 권한 해제 함수 (owner만 호출 가능)
+    function revokeMintOperator(address operator) public onlyOwner {
+        mintAuthorizedOperators[operator] = false;
+        emit MintOperatorRevoked(operator);
+    }
+
+    // mint 권한 확인 함수
+    function isMintAuthorizedOperator(address operator) public view returns (bool) {
+        return mintAuthorizedOperators[operator];
     }
 
     function burn(uint256 amount) public {

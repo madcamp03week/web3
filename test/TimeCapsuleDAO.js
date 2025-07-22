@@ -28,6 +28,9 @@ describe("TimeCapsuleDAO", function () {
 
     // TimeCapsuleDAO에 권한 부여
     await chronosToken.authorizeOperator(await timeCapsuleDAO.getAddress());
+    
+    // TimeCapsuleDAO에 mint 권한 부여
+    await chronosToken.authorizeMintOperator(await timeCapsuleDAO.getAddress());
 
     // 테스트용 토큰 분배
     await chronosToken.transfer(user1.address, ethers.parseEther("100"));
@@ -199,6 +202,69 @@ describe("TimeCapsuleDAO", function () {
     });
   });
 
+  describe("MATIC을 토큰으로 교환", function () {
+    it("0.1 MATIC을 보내면 10 토큰을 받아야 함", async function () {
+      const initialTokenBalance = await chronosToken.balanceOf(user1.address);
+      const initialContractBalance = await ethers.provider.getBalance(await timeCapsuleDAO.getAddress());
+
+      await expect(
+        timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+          value: ethers.parseEther("0.1")
+        })
+      ).to.emit(timeCapsuleDAO, "TokensExchangedForPolygon")
+        .withArgs(user1.address, ethers.parseEther("0.1"), ethers.parseEther("10"));
+
+      expect(await chronosToken.balanceOf(user1.address)).to.equal(initialTokenBalance + ethers.parseEther("10"));
+      expect(await ethers.provider.getBalance(await timeCapsuleDAO.getAddress())).to.equal(initialContractBalance + ethers.parseEther("0.1"));
+    });
+
+    it("0.2 MATIC을 보내면 20 토큰을 받아야 함", async function () {
+      const initialTokenBalance = await chronosToken.balanceOf(user1.address);
+
+      await timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+        value: ethers.parseEther("0.2")
+      });
+
+      expect(await chronosToken.balanceOf(user1.address)).to.equal(initialTokenBalance + ethers.parseEther("20"));
+    });
+
+    it("0.1 MATIC 미만을 보내면 교환이 실패해야 함", async function () {
+      await expect(
+        timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+          value: ethers.parseEther("0.05")
+        })
+      ).to.be.revertedWith("Insufficient Polygon sent");
+    });
+
+    it("0.1 MATIC의 배수가 아닌 값을 보내면 교환이 실패해야 함", async function () {
+      await expect(
+        timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+          value: ethers.parseEther("0.15")
+        })
+      ).to.be.revertedWith("Polygon amount must be multiple of 0.1");
+    });
+
+    it("다른 사용자를 위해 교환할 수 있어야 함", async function () {
+      const initialTokenBalance = await chronosToken.balanceOf(user2.address);
+
+      await timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user2.address, {
+        value: ethers.parseEther("0.1")
+      });
+
+      expect(await chronosToken.balanceOf(user2.address)).to.equal(initialTokenBalance + ethers.parseEther("10"));
+    });
+
+    it("교환 후 컨트랙트에 MATIC이 올바르게 쌓여야 함", async function () {
+      const initialContractBalance = await ethers.provider.getBalance(await timeCapsuleDAO.getAddress());
+
+      await timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+        value: ethers.parseEther("0.1")
+      });
+
+      expect(await ethers.provider.getBalance(await timeCapsuleDAO.getAddress())).to.equal(initialContractBalance + ethers.parseEther("0.1"));
+    });
+  });
+
   describe("자금 인출", function () {
     beforeEach(async function () {
       // 컨트랙트에 MATIC 보내기
@@ -296,6 +362,32 @@ describe("TimeCapsuleDAO", function () {
       await chronosToken.revokeOperator(await timeCapsuleDAO.getAddress());
       expect(await timeCapsuleDAO.isTokenAuthorized()).to.be.false;
     });
+
+    it("mint 권한 요청이 성공해야 함", async function () {
+      // 새로운 TimeCapsuleDAO 인스턴스 생성 (mint 권한이 없는 상태)
+      const newTimeCapsuleDAO = await TimeCapsuleDAO.deploy(await chronosToken.getAddress());
+      await newTimeCapsuleDAO.waitForDeployment();
+      
+      // 직접 ChronosToken에서 mint 권한 부여
+      await chronosToken.authorizeMintOperator(await newTimeCapsuleDAO.getAddress());
+      
+      expect(await newTimeCapsuleDAO.isMintAuthorized()).to.be.true;
+    });
+
+    it("mint 권한 해제가 성공해야 함", async function () {
+      // 직접 ChronosToken에서 mint 권한 해제
+      await chronosToken.revokeMintOperator(await timeCapsuleDAO.getAddress());
+      
+      expect(await timeCapsuleDAO.isMintAuthorized()).to.be.false;
+    });
+
+    it("mint 권한 상태를 올바르게 확인할 수 있어야 함", async function () {
+      expect(await timeCapsuleDAO.isMintAuthorized()).to.be.true; // beforeEach에서 이미 권한 부여됨
+      
+      // 직접 ChronosToken에서 mint 권한 해제
+      await chronosToken.revokeMintOperator(await timeCapsuleDAO.getAddress());
+      expect(await timeCapsuleDAO.isMintAuthorized()).to.be.false;
+    });
   });
 
   describe("MATIC 수신", function () {
@@ -346,6 +438,25 @@ describe("TimeCapsuleDAO", function () {
       
       expect(await chronosToken.balanceOf(user2.address)).to.equal(ethers.parseEther("89")); // 100 - 10 - 1 (좋아요로 인한 차감)
       expect(await ethers.provider.getBalance(user2.address)).to.be.gt(ethers.parseEther("10000")); // MATIC 증가 확인
+    });
+
+    it("양방향 교환 워크플로우가 올바르게 작동해야 함", async function () {
+      // 1. MATIC을 토큰으로 교환
+      const initialTokenBalance = await chronosToken.balanceOf(user1.address);
+      
+      await timeCapsuleDAO.connect(user1).exchangePolygonForTokens(user1.address, {
+        value: ethers.parseEther("0.1")
+      });
+      
+      expect(await chronosToken.balanceOf(user1.address)).to.equal(initialTokenBalance + ethers.parseEther("10"));
+      
+      // 2. 토큰을 MATIC으로 교환
+      const initialPolygonBalance = await ethers.provider.getBalance(user1.address);
+      
+      await timeCapsuleDAO.exchangeTokensForPolygon(user1.address);
+      
+      expect(await chronosToken.balanceOf(user1.address)).to.equal(initialTokenBalance); // 원래대로 돌아옴
+      expect(await ethers.provider.getBalance(user1.address)).to.be.gt(initialPolygonBalance); // MATIC 증가 확인
     });
 
     it("권한이 없는 상태에서 기능이 실패해야 함", async function () {

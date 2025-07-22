@@ -15,10 +15,12 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
     ChronosToken public rewardToken; // 보상 토큰
     uint256 public constant TOKEN_EXCHANGE_THRESHOLD = 10; // 교환 임계값
     uint256 public polygonAmountPer10Tokens; // 0.1 MATIC
+    uint256 public constant MIN_POLYGON_EXCHANGE = 0.1 * 10**18; // 최소 교환 MATIC량
 
     // --- 이벤트 ---
     event WriterSet(uint256 indexed postId, address indexed writer);
     event PolygonExchanged(address indexed exchanger, uint256 tokenAmount, uint256 polygonAmount);
+    event TokensExchangedForPolygon(address indexed exchanger, uint256 polygonAmount, uint256 tokenAmount);
     event RewardTokenAddressUpdated(address oldAddress, address newAddress);
     event PolygonExchangeAmountUpdated(uint256 newAmount);
 
@@ -61,6 +63,20 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
         emit PolygonExchanged(from, amountToExchange, polygonAmountPer10Tokens);
     }
 
+    // from의 0.1 MATIC을 받고 토큰 10개 지급
+    function exchangePolygonForTokens(address from) public payable nonReentrant {
+        require(msg.value >= MIN_POLYGON_EXCHANGE, "Insufficient Polygon sent");
+        require(msg.value % MIN_POLYGON_EXCHANGE == 0, "Polygon amount must be multiple of 0.1");
+        
+        uint256 polygonAmount = msg.value;
+        uint256 tokenAmount = (polygonAmount / MIN_POLYGON_EXCHANGE) * TOKEN_EXCHANGE_THRESHOLD * 10**18;
+        
+        // 토큰 발행 (mint 권한이 필요함)
+        require(rewardToken.mint(from, tokenAmount), "Failed to mint tokens");
+        
+        emit TokensExchangedForPolygon(from, polygonAmount, tokenAmount);
+    }
+
     // 컨트랙트의 모든 MATIC 인출
     function withdrawFunds() public onlyOwner nonReentrant {
         uint256 balance = address(this).balance;
@@ -95,6 +111,21 @@ contract TimeCapsuleDAO is Ownable, ReentrancyGuard {
     // 현재 권한 상태 확인
     function isTokenAuthorized() public view returns (bool) {
         return rewardToken.isAuthorizedOperator(address(this));
+    }
+
+    // ChronosToken에 mint 권한 요청 (owner만 호출 가능)
+    function requestMintAuthorization() public onlyOwner {
+        rewardToken.authorizeMintOperator(address(this));
+    }
+
+    // ChronosToken mint 권한 해제 (owner만 호출 가능)
+    function revokeMintAuthorization() public onlyOwner {
+        rewardToken.revokeMintOperator(address(this));
+    }
+
+    // 현재 mint 권한 상태 확인
+    function isMintAuthorized() public view returns (bool) {
+        return rewardToken.isMintAuthorizedOperator(address(this));
     }
 
     // MATIC 수신
